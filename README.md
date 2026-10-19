@@ -11,6 +11,12 @@ Serve this directory with a static web server and open `index.html`. The demo is
 configured for **java-unit-grader**, initially at `http://localhost:3000/code`.
 Its endpoint can be changed in the server field. The backend must be running;
 the frontend does not simulate or execute Java.
+The exercise uses a Java 25 compact source file with a supplied `void main()`
+frame. Learners add statements to sum the even numbers from 1 through 10 and
+print the result with `IO.println`; they do not need to declare a class or an
+additional method. The JUnit check invokes the compact source's instance main
+method through reflection and compares captured standard output with `30`.
+It checks the output, not whether the solution actually uses a loop.
 No npm installation or build step is needed. The editor's view, stylesheet and
 CodeMirror are loaded from the versioned Code Editor v2.0.0 release on jsDelivr,
 so CDN access is required.
