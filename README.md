@@ -12,11 +12,20 @@ configured for **java-unit-grader**, initially at `http://localhost:3000/code`.
 Its endpoint can be changed in the server field. The backend must be running;
 the frontend does not simulate or execute Java.
 The exercise uses a Java 25 compact source file with a supplied `void main()`
-frame. Learners add statements to sum the even numbers from 1 through 10 and
-print the result with `IO.println`; they do not need to declare a class or an
-additional method. The JUnit check invokes the compact source's instance main
-method through reflection and compares captured standard output with `30`.
-It checks the output, not whether the solution actually uses a loop.
+frame. The supplied input line reads an upper bound with
+`Integer.parseInt(IO.readln())`. Learners add a loop to sum the even numbers from
+1 through that bound (inclusive) and print the sum with `IO.println`. The input
+is an integer from 0 through 10000; no class or additional method is needed.
+
+JUnit supplies six inputs automatically: `0`, `1`, `2`, `9`, `10` and `100`, with
+expected outputs `0`, `0`, `2`, `20`, `30` and `2550`. Each case starts the compiled
+`Solution` in a fresh JVM using the backend's JDK, sends one input line and checks
+the output. Separate runs prevent `IO.readln()`'s cached input reader or static
+program state from leaking across cases. Each program run has a two-second time
+limit; after a timeout, the remaining cases are skipped. The backend's overall
+execution limit still applies. The demo provides no interactive console input:
+the inputs come from JUnit. The checks verify results, not use of a loop.
+
 No npm installation or build step is needed. The editor's view, stylesheet and
 CodeMirror are loaded from the versioned Code Editor v2.0.0 release on jsDelivr,
 so CDN access is required.
