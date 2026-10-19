@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ccmjs Programmieraufgabe</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #243448; background: #f3f5f8; }
+    body { margin: 0; }
+    main { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+    .connection { margin-bottom: 30px; border-bottom: 1px solid #d6dfe9; padding-bottom: 24px; }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 7px; }
+    input { box-sizing: border-box; width: 100%; max-width: 580px; font: inherit; font-size: 14px; padding: 10px 12px; border: 1px solid #b9c7d5; border-radius: 6px; color: inherit; background: #fff; }
+    input:focus-visible { outline: 2px solid #285c91; outline-offset: 2px; }
+    .connection p { color: #5a6b7e; font-size: 13px; line-height: 1.6; margin: 8px 0 0; max-width: 75ch; }
+    #error { color: #984038; white-space: pre-wrap; }
+    @media (max-width: 600px) { main { padding: 24px 16px; } }
+  </style>
+  <script src="./libs/framework/ccm-28.0.0.min.js"></script>
+</head>
+<body>
+  <main>
+    <div class="connection">
+      <label for="server">Prüfserver für diese Demo</label>
+      <input id="server" type="text" inputmode="url" placeholder="https://dein-server.example/api/check" autocomplete="off" spellcheck="false">
+      <p>Die Prüfung benötigt einen Java-25-Server mit der JSON-Schnittstelle aus der README. Die Server-URL wird nur für diese Sitzung verwendet.</p>
+    </div>
+    <div id="task" aria-busy="true"></div>
+    <p id="error" role="alert" hidden></p>
+  </main>
+  <script type="module">
+    import { demo } from "./resources/configs.mjs";
+
+    const host = document.querySelector("#task");
+    const server = document.querySelector("#server");
+    try {
+      const app = await ccm.start("./ccm.programming_task.mjs", { ...demo, serverUrl: server.value }, host);
+      server.addEventListener("input", () => {
+        app.cancel();
+        app.serverUrl = server.value.trim();
+      });
+      window.addEventListener("pagehide", event => { if (!event.persisted) app.destroy(); });
+    } catch (error) {
+      document.querySelector("#error").textContent = error.message || "Die Komponente konnte nicht geladen werden.";
+      document.querySelector("#error").hidden = false;
+    } finally { host.setAttribute("aria-busy", "false"); }
+  </script>
+</body>
+</html>
