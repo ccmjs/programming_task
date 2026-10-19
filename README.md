@@ -7,9 +7,10 @@ Both components use their own Shadow DOM.
 
 ## Demo and embedding
 
-Serve this directory with a static web server and open `index.html`. Enter your
-validation endpoint in the demo's server field. The demo requires a real backend
-implementing the JSON contract below; it does not simulate or execute Java.
+Serve this directory with a static web server and open `index.html`. The demo is
+configured for **java-unit-grader**, initially at `http://localhost:3000/code`.
+Its endpoint can be changed in the server field. The backend must be running;
+the frontend does not simulate or execute Java.
 No npm installation or build step is needed. The editor's view, stylesheet and
 CodeMirror are loaded from the versioned Code Editor v2.0.0 release on jsDelivr,
 so CDN access is required.
@@ -23,7 +24,7 @@ Opening via `file://` is unsupported.
 
   const app = await ccm.start('./ccm.programming_task.mjs', {
     ...demo,
-    serverUrl: 'https://your-server.example/api/check'
+    serverUrl: 'https://your-server.example/code'
   }, document.querySelector('#exercise'));
 </script>
 ```
@@ -32,9 +33,9 @@ Resource URLs use plain `././...` strings. During local development, ccmjs loads
 them relative to the hosting page; keep that page beside the component or provide
 matching dependency URLs. The release workflow replaces this prefix with the
 versioned CDN base. `libs/code_editor/` contains the published
-`ccm.code_editor-2.0.0.min.mjs`, its source map and license. The editor shares the
-local UI library; its view, stylesheet and CodeMirror use the published editor's
-default CDN URLs. The published module is kept unchanged.
+`ccm.code_editor-2.0.0.min.mjs`, its source map and license. The editor's UI library,
+view, stylesheet and CodeMirror use the published editor's default CDN URLs.
+The published module is kept unchanged.
 
 ## Configuration
 
@@ -44,6 +45,8 @@ default CDN URLs. The published module is kept unchanged.
 | `startCode` | `""` | Initial Java source and reset value |
 | `tests` | `""` | Java source of the JUnit test class |
 | `serverUrl` | `""` | HTTP(S) endpoint; an absolute URL or a path relative to the page |
+| `validate` | `null` | Async backend adapter; function or `ccm.load` dependency resolving to a function |
+| `validationOptions` | `{}` | Backend-specific options passed as a snapshot to the adapter |
 | `title` | `"Programmieraufgabe"` | Heading |
 | `fileName` | `"Solution.java"` | Solution filename, without a directory |
 | `testFileName` | `"SolutionTest.java"` | JUnit filename, different from `fileName` |
@@ -61,9 +64,87 @@ intended for self-assessment. The assignment and all server-provided messages
 are rendered as plain text, not HTML. Custom layouts can be provided through
 the `views` and `css` dependencies.
 
-## Backend contract
+## Configurable backend adapters
 
-The component sends a `POST` to `serverUrl` with `Content-Type: application/json`
+The component's default JSON contract is described below. To use a different
+backend, configure `validate` with a function or a named module export loaded
+through `ccm.load`. No change to the component source is needed for another API.
+The demo uses:
+
+```js
+serverUrl: "http://localhost:3000/code",
+validate: ["ccm.load", "././resources/java_unit_grader.mjs#validate"],
+validationOptions: {
+  sourceMode: "files",
+  repairSyntax: false,
+  quarantineMethods: false
+}
+```
+
+An adapter has this signature:
+
+```js
+export async function validate(submission, { serverUrl, signal, options }) {
+  // submission: { code, tests, fileName, testFileName, javaVersion }
+  // Send requests in the backend's format, then return the result format below.
+  // Pass signal to fetch() and other asynchronous work that supports cancellation.
+}
+```
+
+`submission` is a snapshot of the code and exercise settings when checking starts.
+`options` is a detached copy of `validationOptions`, a plain object of structured-cloneable values. The default JSON adapter ignores it; custom adapters decide how to use it.
+`serverUrl` is an absolute HTTP(S) URL. The function controls the transport,
+headers, authentication, request fields, response mapping and, if needed, polling.
+It returns an object (or a Promise of one) in the normalized result format below.
+Throw an `Error` with a useful message when the request cannot be completed.
+
+The component validates the returned result and manages loading feedback,
+timeouts and cancellation. Even an adapter that ignores `signal` cannot leave
+the UI waiting indefinitely or apply a stale result; its own background work may
+still continue. A browser adapter cannot bypass the backend's CORS policy.
+
+Set `validate: null` to use the default JSON endpoint instead. In particular,
+when reusing the demo configuration with that endpoint, override both `serverUrl`
+and `validate`.
+
+## java-unit-grader demo
+
+`resources/java_unit_grader.mjs` connects **POST /code** of the Java-25 backend.
+It sends the solution, JUnit source, filenames and Java version along with the
+configured `sourceMode`, `repairSyntax` and `quarantineMethods` options. `/grade`
+returns the Dynexite grading format and is not supported by this adapter.
+
+The demo uses `sourceMode: "files"`, `repairSyntax: false` and
+`quarantineMethods: false`. The backend writes both submitted sources unchanged
+as UTF-8 files and compiles them with `javac --release 25`. It preserves comments,
+package declarations and original line numbers. Syntax errors anywhere in the
+submission prevent execution; no semicolons are inserted and no methods omitted.
+Compiler diagnostics can therefore be shown at their original editor lines.
+
+Both optional helpers can be enabled independently through `validationOptions`.
+When a helper changes the source, the adapter displays the reported changes and
+omits inline markers for that run. The backend's legacy `sourceMode: "split"`
+remains available for splitting multiple top-level classes and using templates;
+it does not guarantee unchanged source or editor line positions.
+
+The adapter verifies the backend's `validation` response against the requested
+options and Java version. For the strict demo it requires `sourcePreserved: true`.
+An older backend that ignores these options is rejected with a configuration
+error. The backend's `status: "success"` only means the request completed; the
+adapter determines passed/failed from individual cases. Timeouts, missing cases
+and exclusively skipped cases are not treated as success.
+
+The backend includes a Java-25 Dockerfile and sandbox entrypoint. Build its image
+with `docker build -t java-junit-grader:25 .` in the backend repository, then start
+`node server.js`. See the backend README for deployment options. Local mode
+requires JDK 25 or newer and compiles for Java 25; it runs code on the host and is
+only suitable for the operator's own connection checks. The backend binds to
+`127.0.0.1` by default; protect its unauthenticated library-management endpoints
+when exposing it through a server or proxy.
+
+## Default backend contract and normalized results
+
+With `validate: null`, the component sends a `POST` to `serverUrl` with `Content-Type: application/json`
 and `Accept: application/json`. It does not attach cookies or authentication
 credentials. There is one solution file and one JUnit file per request:
 
@@ -142,8 +223,9 @@ appear as request errors and can be retried. A cross-origin backend must allow
 the frontend origin, the POST method, and the Content-Type header via CORS,
 including the browser's OPTIONS preflight.
 
-The backend must provide the requested JDK (25 or newer) and JUnit, reject
-unsupported versions, and compile/run the submitted files. It must execute
+A backend implementing the default contract must provide the requested JDK
+(25 or newer) and JUnit, reject unsupported versions, and compile/run the
+submitted files. Other adapters must document how their backend selects Java. It must execute
 untrusted Java in isolation with server-side time and memory limits. A client
 abort or timeout stops waiting in the browser; it does not guarantee that the
 server has stopped its process.
@@ -175,7 +257,8 @@ be invalidated. Before permanently removing the parent, call `destroy()`.
 
 - `ccm.programming_task.mjs`: configuration and all instance logic.
 - `resources/views.mjs`, `resources/styles.css`: replaceable presentation.
-- `resources/configs.mjs`: example configuration with assignment and Java sources.
+- `resources/configs.mjs`: demo configuration with assignment, Java sources and adapter dependency.
+- `resources/java_unit_grader.mjs`: adapter for the existing `/code` backend interface.
 - `index.html`: demo, including its own script and styles.
 - `libs/framework/`, `libs/ccm-ui/`: shared runtime dependencies.
 - `libs/code_editor/`: published Code Editor v2.0.0, source map and license.

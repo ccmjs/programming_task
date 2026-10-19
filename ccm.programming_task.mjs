@@ -23,6 +23,9 @@ export const component = {
     startCode: "",
     tests: "",
     serverUrl: "",
+    // Optional async function: (submission, { serverUrl, signal, options }) => result.
+    validate: null,
+    validationOptions: {},
     fileName: "Solution.java",
     testFileName: "SolutionTest.java",
     javaVersion: 25,
@@ -74,21 +77,23 @@ export const component = {
       if (active) return null;
 
       let url;
-      let body;
+      let submission;
+      let options;
       try {
         validateOptions();
+        options = structuredClone(this.validationOptions);
         if (!this.serverUrl.trim()) throw new Error("Bitte eine Server-URL in der Konfiguration angeben.");
         if (!this.tests.trim()) throw new Error("Für diese Aufgabe sind noch keine JUnit-Tests hinterlegt.");
         try { url = new URL(this.serverUrl, document.baseURI); }
         catch { throw new Error("Die Server-URL ist ungültig."); }
         if (!["http:", "https:"].includes(url.protocol)) throw new Error("Die Server-URL muss HTTP oder HTTPS verwenden.");
-        body = JSON.stringify({
+        submission = {
           code: this.editor.getValue(),
           tests: this.tests,
           fileName: this.fileName,
           testFileName: this.testFileName,
           javaVersion: this.javaVersion,
-        });
+        };
       } catch (error) {
         this.state = { phase: "error", result: null, message: error.message };
         renderFeedback();
@@ -106,21 +111,11 @@ export const component = {
       }, this.requestTimeout);
 
       try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          credentials: "omit",
-          cache: "no-store",
-          body,
+        const data = await runValidation(this.validate ?? validateJSON, submission, {
+          serverUrl: url.href,
           signal: job.controller.signal,
+          options,
         });
-        if (!response.ok) throw new Error(`Der Prüfserver meldet einen HTTP-Fehler (${response.status}).`);
-        let data;
-        try { data = await response.json(); }
-        catch (error) {
-          if (job.controller.signal.aborted) throw error;
-          throw new Error("Der Prüfserver hat kein gültiges JSON zurückgegeben.");
-        }
         const result = normalizeResponse(data);
         // An edited/reset/restarted exercise must never receive an old response.
         if (active !== job) return null;
@@ -183,6 +178,46 @@ export const component = {
       previous.controller.abort();
     }
 
+    /** Keeps cancellation responsive even if a custom adapter ignores its signal. */
+    async function runValidation(validate, submission, context) {
+      const { signal } = context;
+      signal.throwIfAborted();
+      let onAbort;
+      const aborted = new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+      try {
+        return await Promise.race([
+          Promise.resolve().then(() => {
+            signal.throwIfAborted();
+            return validate(submission, context);
+          }),
+          aborted,
+        ]);
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+      }
+    }
+
+    /** Default backend contract; replace through config.validate for another API. */
+    async function validateJSON(submission, { serverUrl, signal }) {
+      const response = await fetch(serverUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "omit",
+        cache: "no-store",
+        body: JSON.stringify(submission),
+        signal,
+      });
+      if (!response.ok) throw new Error(`Der Prüfserver meldet einen HTTP-Fehler (${response.status}).`);
+      try { return await response.json(); }
+      catch (error) {
+        if (signal.aborted) throw error;
+        throw new Error("Der Prüfserver hat kein gültiges JSON zurückgegeben.");
+      }
+    }
+
     /** Only replace feedback; the editor DOM, focus and undo history remain intact. */
     function renderFeedback() {
       if (!mounted) return;
@@ -196,6 +231,10 @@ export const component = {
     function validateOptions() {
       for (const key of ["title", "task", "startCode", "tests", "serverUrl", "fileName", "testFileName"])
         if (typeof app[key] !== "string") throw new TypeError(`${key} must be a string`);
+      if (app.validate !== null && typeof app.validate !== "function")
+        throw new TypeError("validate must be a function or null");
+      if (!app.validationOptions || Object.getPrototypeOf(app.validationOptions) !== Object.prototype)
+        throw new TypeError("validationOptions must be a plain object");
       for (const key of ["fileName", "testFileName"])
         if (!/^[A-Za-z_$][\w$]*\.java$/.test(app[key])) throw new TypeError(`${key} must be a Java filename without a path`);
       if (app.fileName === app.testFileName) throw new Error("fileName and testFileName must differ");

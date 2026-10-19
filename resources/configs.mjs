@@ -28,5 +28,11 @@ class SolutionTest {
     }
 }
 `,
-  serverUrl: "",
+  serverUrl: "http://localhost:3000/code",
+  validate: ["ccm.load", "././resources/java_unit_grader.mjs#validate"],
+  validationOptions: {
+    sourceMode: "files",
+    repairSyntax: false,
+    quarantineMethods: false,
+  },
 };

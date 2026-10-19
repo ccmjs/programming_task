@@ -23,8 +23,8 @@
   <main>
     <div class="connection">
       <label for="server">Prüfserver für diese Demo</label>
-      <input id="server" type="text" inputmode="url" placeholder="https://dein-server.example/api/check" autocomplete="off" spellcheck="false">
-      <p>Die Prüfung benötigt einen Java-25-Server mit der JSON-Schnittstelle aus der README. Die Server-URL wird nur für diese Sitzung verwendet.</p>
+      <input id="server" type="text" inputmode="url" placeholder="http://localhost:3000/code" autocomplete="off" spellcheck="false">
+      <p>Diese Demo verwendet java-unit-grader über dessen /code-Endpunkt. Der Server muss mit Java 25 oder neuer laufen. Die Server-URL wird nur für diese Sitzung verwendet.</p>
     </div>
     <div id="task" aria-busy="true"></div>
     <p id="error" role="alert" hidden></p>
@@ -34,6 +34,7 @@
 
     const host = document.querySelector("#task");
     const server = document.querySelector("#server");
+    server.value = demo.serverUrl;
     try {
       const app = await ccm.start("./ccm.programming_task.mjs", { ...demo, serverUrl: server.value }, host);
       server.addEventListener("input", () => {
